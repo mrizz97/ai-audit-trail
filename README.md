@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Audit Trail
 
-## Getting Started
+## Problem
 
-First, run the development server:
+AI-generated outputs are used in sensitive workflows (payments, support, code). They introduce risk: overconfidence, hallucination, weak traceability, and unclear accountability. Many teams lack lightweight tooling that surfaces AI uncertainty in a structured, reviewable way without blocking iteration.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Approach
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+AI Audit Trail is an internal tool that produces structured audit records for AI-assisted outputs. It focuses on **risk, uncertainty, and reviewability** — not correctness.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Each audit includes:
+- A confidence score
+- Identified risk factors
+- A human-review-required flag
+- Traceable metadata (trace_id, domain, timestamp)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Internal teams can use it to support compliance, post-incident review, and human judgment rather than to automate approval.
 
-## Learn More
+## Opportunity Size (Qualitative)
 
-To learn more about Next.js, take a look at the following resources:
+- AI-assisted actions are growing rapidly across internal tools
+- Even a small reduction in investigation time or incident severity compounds at scale
+- Trust tooling enables faster AI adoption by reducing organizational risk
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This tool is designed as internal infrastructure rather than a revenue-generating product.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## What This Product Does Not Do
 
-## Deploy on Vercel
+- Does not verify factual correctness
+- Does not approve AI outputs automatically
+- Does not replace human reviewers
+- Does not store or act on user data
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+These constraints are intentional to avoid false confidence in high-stakes workflows.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Success Metrics
+
+- Share of AI-assisted actions with an audit record
+- Time to complete post-incident investigations
+- Reviewer clarity and trust (e.g. surveys)
+- Rate of audits flagged for human review (leading indicator of risk)
+
+## Assumptions
+
+- AI outputs are probabilistic, not deterministic
+- Overconfidence is riskier than false alarms
+- Humans remain accountable for final decisions
+
+## Limitations
+
+- Relies on model self-assessment
+- Conservative bias may increase review volume
+- Cannot detect all hallucinations or domain-specific errors
+
+## How AI Was Used to Build This
+
+The project was built with AI-assisted development and explicit human oversight: AI was used for scaffolding and iteration; system design, constraints, and validation logic were human-directed. The product enforces the same guardrails used during development.
