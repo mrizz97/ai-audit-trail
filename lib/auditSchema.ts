@@ -5,6 +5,7 @@ export const AuditRequestSchema = z.object({
   prompt: z.string(),
   ai_output: z.string(),
   domain: z.enum(["payments", "support", "code", "other"]),
+  data_involved: z.enum(["user", "synthetic", "public", "unknown"]),
 });
 
 export type AuditRequest = z.infer<typeof AuditRequestSchema>;
@@ -23,11 +24,17 @@ export const AuditReportSchema = z.object({
   /** Short, non-PII summary of the user prompt (e.g. intent or topic). Product: search and analytics without storing raw prompts. Trust: explains what was audited without exposing sensitive input. Compliance: supports review and retention policies while limiting PII. */
   prompt_summary: z.string().max(500),
 
+  /** Identifier of the audit prompt/version used (e.g. "audit-risk-v1"). Auditability: allows correlating reports to a specific prompt version. Compliance: supports reproducibility and change control for audit logic. */
+  prompt_pattern: z.string(),
+
   /** Business domain of the interaction. Product: routing, SLAs, and domain-specific dashboards. Trust: applies the right policies and reviewers per domain. Compliance: domain-specific regulations (e.g. payments vs support). */
   domain: z.enum(["payments", "support", "code", "other"]),
 
   /** Classification of how sensitive the involved data is. Product: determines retention, access, and alerting. Trust: ensures high-sensitivity items get stricter handling. Compliance: drives encryption, access control, and retention (e.g. PCI, HIPAA). */
   data_sensitivity: z.enum(["low", "medium", "high"]),
+
+  /** Type of data involved in the interaction. Auditability: determines retention and handling policies. Compliance: required for data governance (e.g. user data vs synthetic); "unknown" forces conservative handling. */
+  data_involved: z.enum(["user", "synthetic", "public", "unknown"]),
 
   /** List of detected risk indicators (e.g. "financial_advice", "pii_mentioned", "hallucination_risk"). Product: filtering and prioritization in dashboards. Trust: transparent, machine-readable reasons for flags. Compliance: evidence for why an item was escalated or restricted. */
   risk_factors: z.array(z.string()),

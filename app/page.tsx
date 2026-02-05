@@ -7,6 +7,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [aiOutput, setAiOutput] = useState("");
   const [domain, setDomain] = useState<AuditReport["domain"]>("other");
+  const [dataInvolved, setDataInvolved] = useState<AuditReport["data_involved"]>("unknown");
   const [report, setReport] = useState<AuditReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,12 @@ export default function Home() {
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, ai_output: aiOutput, domain }),
+        body: JSON.stringify({
+          prompt,
+          ai_output: aiOutput,
+          domain,
+          data_involved: dataInvolved,
+        }),
       });
       const data = await res.json();
 
@@ -45,6 +51,7 @@ export default function Home() {
       aiOutput:
         "We refunded the customer due to a processing error.",
       domain: "payments" as const,
+      dataInvolved: "user" as const,
     },
     {
       label: "Currency Calculation Code",
@@ -52,6 +59,7 @@ export default function Home() {
       aiOutput:
         "Use the rate from the first API result and multiply. Cache it for 24 hours.",
       domain: "code" as const,
+      dataInvolved: "synthetic" as const,
     },
     {
       label: "Account Access Support Response",
@@ -59,17 +67,20 @@ export default function Home() {
       aiOutput:
         "We've reset your password. You can log in with the temporary link we sent. If that doesn't work, contact support for a manual override.",
       domain: "support" as const,
+      dataInvolved: "user" as const,
     },
   ];
 
   function loadExample(
     prompt: string,
     aiOutput: string,
-    domain: AuditReport["domain"]
+    domain: AuditReport["domain"],
+    dataInvolved: AuditReport["data_involved"]
   ) {
     setPrompt(prompt);
     setAiOutput(aiOutput);
     setDomain(domain);
+    setDataInvolved(dataInvolved);
     setError(null);
     setReport(null);
   }
@@ -95,7 +106,7 @@ export default function Home() {
                 key={ex.label}
                 type="button"
                 onClick={() =>
-                  loadExample(ex.prompt, ex.aiOutput, ex.domain)
+                  loadExample(ex.prompt, ex.aiOutput, ex.domain, ex.dataInvolved)
                 }
                 className="rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 focus:outline-none focus:ring-1 focus:ring-zinc-500"
               >
@@ -159,6 +170,28 @@ export default function Home() {
               <option value="support">support</option>
               <option value="code">code</option>
               <option value="other">other</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="dataInvolved"
+              className="mb-1 block text-sm font-medium text-zinc-700"
+            >
+              Data involved
+            </label>
+            <select
+              id="dataInvolved"
+              value={dataInvolved}
+              onChange={(e) =>
+                setDataInvolved(e.target.value as AuditReport["data_involved"])
+              }
+              className="w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            >
+              <option value="user">user</option>
+              <option value="synthetic">synthetic</option>
+              <option value="public">public</option>
+              <option value="unknown">unknown</option>
             </select>
           </div>
 
@@ -245,6 +278,14 @@ export default function Home() {
                 <div>
                   <dt className="text-zinc-400">Model used</dt>
                   <dd className="text-zinc-600">{report.model_used}</dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-400">Prompt pattern</dt>
+                  <dd className="text-zinc-600">{report.prompt_pattern}</dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-400">Data involved</dt>
+                  <dd className="text-zinc-600">{report.data_involved}</dd>
                 </div>
                 <div>
                   <dt className="text-zinc-400">Timestamp</dt>

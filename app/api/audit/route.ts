@@ -33,8 +33,8 @@ export async function POST(request: Request) {
 
   const parseResult = AuditRequestSchema.safeParse(body);
   if (!parseResult.success) {
-    const message = parseResult.error.errors
-      .map((e) => `${e.path.join(".")}: ${e.message}`)
+    const message = parseResult.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
     return NextResponse.json(
       { error: "Request validation failed.", details: message },
@@ -42,9 +42,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const { prompt, ai_output, domain } = parseResult.data;
+  const { prompt, ai_output, domain, data_involved } = parseResult.data;
 
-  // --- 2. Call LLM with conservative prompt; force JSON matching AuditReportSchema ---
+  // Server-authoritative metadata: not delegated to the LLM.
+  const MODEL_USED = "gpt-4o-mini";
+  const PROMPT_PATTERN = "audit-risk-v1";
+
+  // --- 2. Call LLM with conservative prompt; force JSON matching report shape ---
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -59,29 +63,32 @@ Your role is NOT to verify correctness.
 Your role is to surface uncertainty and risk.
 
 Instructions:
-- Be conservative
-- Lower confidence when assumptions are unclear
-- Identify financial, privacy, or hallucination risks
-- Require human review when ambiguity exists
-- Avoid overconfidence or definitive language
+- Be conservative. Lower confidence when assumptions are unclear. Require human review when ambiguous.
+- Avoid overconfidence or definitive language.
+- Explicitly consider and flag (in risk_factors and explanation) where relevant:
+  - Hallucination: invented facts, unsupported claims, or plausible-sounding falsehoods
+  - Bias/fairness: unfair treatment, stereotyping, or discriminatory implications
+  - Privacy/PII: exposure or handling of personal or identifiable data
+  - Financial correctness: money, amounts, rates, or commitments that could be wrong or misleading
+  - Account/security: access, credentials, permissions, or security-sensitive advice
+- When any of these risks are present or uncertain, set requires_human_review to true and lower confidence_score.
 
-Return ONLY valid JSON that matches the provided schema.
+Return ONLY valid JSON with exactly these fields (all required). Do not include trace_id, model_used, prompt_pattern, timestamp, or data_involved — they are set server-side.
 
-Schema (all fields required):
+Schema:
 {
-  "trace_id": "<UUID v4 string>",
-  "model_used": "<string, e.g. the model name if known or 'unknown'>",
   "prompt_summary": "<string, short non-PII summary of the user prompt, max 500 chars>",
   "domain": "payments" | "support" | "code" | "other",
   "data_sensitivity": "low" | "medium" | "high",
   "risk_factors": ["<string>", ...],
   "confidence_score": <number between 0 and 1>,
   "requires_human_review": <boolean>,
-  "explanation": "<string, concise human-readable rationale, max 2000 chars>",
-  "timestamp": "<ISO 8601 with offset, e.g. 2024-01-15T12:00:00.000Z>"
+  "explanation": "<string, concise human-readable rationale, max 2000 chars>"
 }`;
 
   const userPrompt = `Domain (use exactly as given): ${domain}
+Data involved (use exactly as given): ${data_involved}
+Take data_involved into account when setting data_sensitivity and risk_factors: e.g. "user" implies higher sensitivity and privacy/PII risk; "synthetic" or "public" may allow lower sensitivity; "unknown" should bias toward conservative (higher sensitivity, more risk factors).
 
 User prompt to summarize (do not include PII in prompt_summary):
 ${prompt}
@@ -147,18 +154,28 @@ Return only the JSON object, no other text.`;
     );
   }
 
-  // --- 3. Validate LLM output with Zod (fail closed: do not guess or fix) ---
+  // --- 3. Merge server-authoritative metadata (overwrite any LLM-supplied values) ---
+  const merged = {
+    ...(typeof data === "object" && data !== null ? data : {}),
+    trace_id: crypto.randomUUID(),
+    model_used: MODEL_USED,
+    prompt_pattern: PROMPT_PATTERN,
+    timestamp: new Date().toISOString(),
+    data_involved,
+  };
+
+  // --- 4. Validate full report with Zod (fail closed: do not guess or fix) ---
   // We use parse() + try/catch so that invalid reports throw and we always return 400
   // for schema violations. 400 signals client/LLM that the payload was rejected;
   // we never return a partially-valid or corrected report, only the exact validated object.
   let report;
   try {
-    report = AuditReportSchema.parse(data);
+    report = AuditReportSchema.parse(merged);
   } catch (err) {
     const message =
       err instanceof ZodError
-        ? err.errors
-            .map((e) => `${e.path.join(".")}: ${e.message}`)
+        ? err.issues
+            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
             .join("; ")
         : "Audit output validation failed.";
     return NextResponse.json(
