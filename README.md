@@ -1,57 +1,106 @@
 # AI Audit Trail
 
+**Product brief — internal audit tooling for AI-assisted outputs**
+
+---
+
 ## Problem
 
-AI-generated outputs are used in sensitive workflows (payments, support, code). They introduce risk: overconfidence, hallucination, weak traceability, and unclear accountability. Many teams lack lightweight tooling that surfaces AI uncertainty in a structured, reviewable way without blocking iteration.
+AI-generated outputs are increasingly used in sensitive workflows: payments, customer support, and code. These systems improve speed and scale but introduce new risks: overconfidence, hallucination, weak traceability, and unclear accountability. When something goes wrong, teams often lack a structured record of what was assessed and why.
+
+Most organizations do not have lightweight tooling that (1) surfaces AI uncertainty in a machine- and human-readable way, (2) supports compliance and post-incident review, and (3) does so without blocking rapid iteration. Building custom audit logic per use case does not scale. This brief describes an internal product that addresses that gap.
+
+---
 
 ## Approach
 
-AI Audit Trail is an internal tool that produces structured audit records for AI-assisted outputs. It focuses on **risk, uncertainty, and reviewability** — not correctness.
+AI Audit Trail is an internal tool that generates **structured audit records** for AI-assisted outputs. It does not verify correctness; it focuses on **risk, uncertainty, and reviewability**.
 
-Each audit includes:
-- A confidence score
-- Identified risk factors
-- A human-review-required flag
-- Traceable metadata (trace_id, domain, timestamp)
+**What each audit record contains:**
 
-Internal teams can use it to support compliance, post-incident review, and human judgment rather than to automate approval.
+- **Confidence score** (0–1) — how confident the audit system is in its own assessment
+- **Risk factors** — machine-readable list of detected concerns (e.g. financial, privacy, hallucination risk)
+- **Human-review-required flag** — binary signal for routing to review queues
+- **Traceable metadata** — trace_id (UUID), domain, model_used, timestamp, prompt summary, explanation
+
+The product is designed so internal teams can use it to support compliance, post-incident investigation, and human-in-the-loop workflows. It does not automate approval; it informs it.
+
+---
 
 ## Opportunity Size (Qualitative)
 
-- AI-assisted actions are growing rapidly across internal tools
-- Even a small reduction in investigation time or incident severity compounds at scale
-- Trust tooling enables faster AI adoption by reducing organizational risk
+- AI-assisted actions are growing rapidly across internal tools; audit coverage will matter more as usage scales.
+- Even a small reduction in investigation time or incident severity compounds at scale.
+- Trust tooling (visibility, auditability) can enable faster and safer AI adoption by reducing organizational risk.
 
-This tool is designed as internal infrastructure rather than a revenue-generating product.
+This tool is positioned as **internal infrastructure**, not a revenue-generating product. Success is measured by adoption, reviewer efficiency, and risk visibility.
+
+---
 
 ## What This Product Does Not Do
 
-- Does not verify factual correctness
-- Does not approve AI outputs automatically
-- Does not replace human reviewers
-- Does not store or act on user data
+- **Does not verify factual correctness** — it assesses risk and uncertainty, not truth.
+- **Does not automatically approve AI outputs** — approval remains a human or downstream policy decision.
+- **Does not replace human reviewers** — it prioritizes and explains what to review.
+- **Does not store or act on user data** — the UI and API are stateless by design; persistence is not implemented in this version.
 
-These constraints are intentional to avoid false confidence in high-stakes workflows.
+These constraints are intentional. The product aims to avoid false confidence in high-stakes workflows and to keep the boundary between “audit” and “approval” explicit.
+
+---
 
 ## Success Metrics
 
-- Share of AI-assisted actions with an audit record
-- Time to complete post-incident investigations
-- Reviewer clarity and trust (e.g. surveys)
-- Rate of audits flagged for human review (leading indicator of risk)
+- **Coverage** — % of AI-assisted actions that have an audit record
+- **Efficiency** — reduction in time to complete post-incident investigations (e.g. via trace_id and explanation)
+- **Reviewer experience** — clarity and trust (e.g. surveys or qualitative feedback)
+- **Risk visibility** — rate of audits flagged for human review (leading indicator of where risk is being surfaced)
+
+---
 
 ## Assumptions
 
-- AI outputs are probabilistic, not deterministic
-- Overconfidence is riskier than false alarms
-- Humans remain accountable for final decisions
+- AI outputs are probabilistic, not deterministic; treating them as such reduces overconfidence.
+- In sensitive workflows, overconfidence is riskier than false alarms; the product biases toward caution.
+- Humans remain accountable for final decisions; the tool supports, not replaces, that accountability.
+
+---
 
 ## Limitations
 
-- Relies on model self-assessment
-- Conservative bias may increase review volume
-- Cannot detect all hallucinations or domain-specific errors
+- **Model self-assessment** — the audit is generated by an LLM; quality depends on that model and the prompt.
+- **Conservative bias** — when in doubt, the system tends to flag for human review, which may increase review volume.
+- **Scope** — the tool cannot detect all hallucinations or domain-specific errors; it surfaces indicators, not guarantees.
+
+---
+
+## Tools and Stack
+
+| Layer        | Technology / approach |
+|-------------|------------------------|
+| Framework   | Next.js 16 (App Router), React 19 |
+| Language    | TypeScript |
+| Styling     | Tailwind CSS |
+| Validation  | Zod (request body and audit report schema) |
+| Audit logic | OpenAI API (e.g. gpt-4o-mini), low temperature; prompt instructs the model to surface risk and uncertainty, not to verify correctness |
+| API         | `POST /api/audit` — accepts prompt, ai_output, domain; returns a validated audit report or 400/502 with clear error messages |
+
+The audit report schema is defined in `lib/auditSchema.ts` and is the single source of truth for the structure of audit records. The UI is a minimal internal tool: form (prompt, AI output, domain), example scenarios, and a structured display of the audit result with emphasis on the human-review flag and confidence score.
+
+---
+
+## Methodology
+
+**Design principles (implemented in code and prompts):**
+
+- **Fail closed** — invalid request or invalid LLM output returns HTTP 400 with a clear message; the system does not guess or auto-correct. False confidence is treated as worse than failing.
+- **Risk surfacing, not approval** — the endpoint and the LLM prompt are framed so the model surfaces uncertainty and risk; it does not attest to correctness.
+- **Human review as first-class outcome** — when the model is unsure, it is instructed to set `requires_human_review: true` and lower confidence; the UI highlights this flag.
+- **Low temperature, reliability over creativity** — the LLM is called with a low temperature to favor consistent, structured output over creative variation.
+
+**Flow:** The client sends prompt, ai_output, and domain. The API validates the body with Zod, calls the LLM with a fixed system prompt that describes the audit role and the required JSON shape, then validates the LLM response against `AuditReportSchema`. If validation fails at any step, the API returns 400 (or 502 for upstream errors) and does not return a report. No partial or “best effort” reports are returned.
+
+---
 
 ## How AI Was Used to Build This
 
-The project was built with AI-assisted development and explicit human oversight: AI was used for scaffolding and iteration; system design, constraints, and validation logic were human-directed. The product enforces the same guardrails used during development.
+The project was built with AI-assisted development and explicit human oversight. AI was used for scaffolding, implementation, and iteration. All product and system design decisions—including the choice to fail closed, to avoid storing user data, and to treat human review as a first-class outcome—were human-directed. The validation logic and schema are human-specified; the product enforces the same guardrails (risk surfacing, no auto-approval) that were intended during development.
